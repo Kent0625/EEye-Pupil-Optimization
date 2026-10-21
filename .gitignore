@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+
+# Outputs & temporary files
+outputs/
+*.mp4_tmp.mp4
+test_*.mp4
+debug_*.png
+prob_heatmap_*.png
+data/extracted_frames/
+
+# Environments
+.env
+.venv
+env/
+venv/
+eeye_env/

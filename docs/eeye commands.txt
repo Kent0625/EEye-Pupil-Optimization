@@ -1,0 +1,62 @@
+
+192.168.254.108
+
+ssh admin@192.168.254.113
+
+ssh admin@eeye.local
+
+python3 eeye_server.py
+
+http://192.168.254.113:8000
+
+reboot:
+sudo shutdown -r now
+
+shutdown:
+sudo shutdown -h now
+
+raspi-gpio set 17 op dh
+
+source eeye_env/bin/activate
+
+cd ~/eeye && source eeye_env/bin/activate
+
+nano tof_sensor2.py
+python3 tof_sensor2.py
+
+
+nano ~/eeye/test_camera.py
+python3 ~/eeye/test_camera.py
+
+
+nano ~/eeye/test_video.py
+python3 ~/eeye/test_video.py
+(scp admin@eeye.local:/home/admin/eeye/test_video.mp4 C:\Users\User\Documents\E-EYE\)
+
+
+
+python3 eeye_capture.py
+scp -r admin@eeye.local:/home/admin/eeye/capture_frames C:\Users\User\Documents\E-EYE\
+
+scp admin@192.168.254.108:/home/admin/eeye/capture_video.mp4 C:\Users\User\Documents\E-EYE\
+
+scp -r admin@eeye.local:/home/admin/eeye/capture_frames C:\Users\User\Documents\E-EYE\
+scp admin@eeye.local:/home/admin/eeye/capture_video.mp4 C:\Users\User\Documents\E-EYE\
+
+
+nano ~/eeye/process_frames.py
+python3 process_frames.py
+scp admin@eeye.local:/home/admin/eeye/capture_processed_video.mp4 C:\Users\User\Documents\E-EYE\
+
+
+cd ~/eeye
+rm -rf eeye_env
+python3 -m venv eeye_env
+source eeye_env/bin/activate
+
+pip install picamera2 pigpio Pillow
+
+
+
+go up: Alt + \
+delete all code nano: Alt + T
