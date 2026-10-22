@@ -561,9 +561,14 @@ def main():
         transforms.Grayscale(),
     ])
 
-    cap = cv2.VideoCapture(args.video)
+    try:
+        cam_idx = int(args.video)
+        cap = cv2.VideoCapture(cam_idx)
+    except ValueError:
+        cap = cv2.VideoCapture(args.video)
+
     if not cap.isOpened():
-        raise ValueError(f"Could not open input video: {args.video}")
+        raise ValueError(f"Could not open input video or camera source: {args.video}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
 

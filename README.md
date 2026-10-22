@@ -71,6 +71,7 @@ The program supports three view modes using the `--view` flag:
 ## What is Inside This Repository?
 
 - **src/**: Main Python programs.
+  - `live_capture.py`: Real-time camera tracking program with hotkeys for view switching, snapshot saving, and video recording.
   - `optimized_inference.py`: The improved detection program featuring the Zoom In Then Capture pipeline and red pupil shading.
   - `inference.py`: The original baseline program for comparison.
   - `pupil_detector2.py`: Helper detector using eye-box localization.
@@ -128,6 +129,24 @@ To run quietly in the background without opening a window (saves directly to the
 python src/optimized_inference.py "data/reference/ideal captured.mp4" -o "my_output.mp4" --no-show
 ```
 
+### Step 4: Run Real-Time Live Camera Capture
+
+To start live detection directly from your connected camera or webcam:
+
+```bash
+python src/live_capture.py
+```
+
+- If you have multiple cameras or an external USB camera, specify its index:
+  ```bash
+  python src/live_capture.py --camera 1
+  ```
+- Interactive keyboard shortcuts during live preview:
+  - `v`: Cycle display views (Zoomed Eye view, Side-by-Side view, Full Camera view).
+  - `s` or `SPACE`: Save a snapshot picture to the `captures/` folder.
+  - `r`: Start or stop recording a video clip to the `captures/` folder.
+  - `q` or `ESC`: Quit the live camera feed.
+
 ---
 
 ## How to Run on the Raspberry Pi
@@ -177,7 +196,13 @@ git pull origin main
 
 ### Step 4: Run Detection on the Raspberry Pi
 
-Because the Raspberry Pi is usually operated without a monitor attached, always add the `--no-show` flag so it runs cleanly in the background:
+To record and process a live stream from the connected Raspberry Pi camera:
+
+```bash
+python3 src/live_capture.py --camera 0 --no-show --output pi_live_output.mp4
+```
+
+Or to process an existing recorded video file:
 
 ```bash
 python3 src/optimized_inference.py "data/reference/ideal captured.mp4" -o "pi_output.mp4" --no-show
