@@ -77,7 +77,7 @@ The program supports three view modes using the `--view` flag:
   - `train_unet.py`: Training program to retrain the neural network when new labeled images are added.
   - `export_frames.py`: Tool to save video frames as PNG images for labeling.
   - `unet.py`: The neural network model structure.
-- **checkpoints/**: The saved model weights file (`pupil-unet-epoch48-val_dice0.7170.ckpt`).
+- **checkpoints/**: Contains the saved neural network models (`pupil-unet-zoomed-best.ckpt` trained specifically on zoomed eye apertures, and `pupil-unet-epoch48-val_dice0.7170.ckpt` for baseline comparison).
 - **data/**:
   - `emmetropic/`: Videos of normal eyes.
   - `hyperopia/`: Videos of farsighted eyes, including difficult videos with drooping eyelids.

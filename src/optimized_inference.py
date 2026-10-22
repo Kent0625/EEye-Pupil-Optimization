@@ -37,8 +37,8 @@ def parse_args():
     parser.add_argument(
         "--checkpoint",
         "-c",
-        default="../checkpoints/pupil-unet-epoch48-val_dice0.7170.ckpt",
-        help="Path to trained PyTorch/Lightning checkpoint.",
+        default=None,
+        help="Path to trained PyTorch/Lightning checkpoint. If omitted, auto-detects best available checkpoint.",
     )
     parser.add_argument(
         "--output",
@@ -177,6 +177,7 @@ def detect_pupil_in_zoomed_roi(
 ) -> tuple:
     """
     Detects corneal glint and radial pupil boundary inside the zoomed eye workspace.
+    Combines deep learning U-Net segmentation with corneal glint anchoring.
     Returns: (pupil_cx, pupil_cy, pupil_radius, glint_pt, fitted_ellipse)
     """
     zh, zw = zoomed_gray.shape[:2]
@@ -198,7 +199,68 @@ def detect_pupil_in_zoomed_roi(
     gx = max_loc[0] + x_left
     gy = max_loc[1] + y_top
 
-    # Morphological opening to suppress point glint when scanning radial boundary
+    # Step 1: Deep Learning U-Net Segmentation (if model is loaded)
+    unet_fitted_ellipse = None
+    unet_cx, unet_cy, unet_r = None, None, None
+
+    if model is not None and device is not None:
+        try:
+            # Resize zoomed eye to 256x256 network resolution
+            net_in = cv2.resize(zoomed_gray, (256, 256))
+            tensor = torch.from_numpy(net_in).float().unsqueeze(0).unsqueeze(0).to(device) / 255.0
+            with torch.no_grad():
+                logits = model(tensor)
+                prob_map = torch.sigmoid(logits).squeeze().cpu().numpy()
+
+            if prob_map.shape != (zh, zw):
+                prob_map = cv2.resize(prob_map, (zw, zh))
+
+            # Threshold and clean
+            raw_mask = (prob_map >= threshold).astype(np.uint8) * 255
+            k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            clean_mask = cv2.morphologyEx(raw_mask, cv2.MORPH_OPEN, k)
+
+            contours, _ = cv2.findContours(clean_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            best_c, best_score = None, -1.0
+
+            for c in contours:
+                area = cv2.contourArea(c)
+                if area < 100 or area > (zh * zw * 0.45):
+                    continue
+                peri = cv2.arcLength(c, True)
+                if peri == 0:
+                    continue
+                circ = (4.0 * np.pi * area) / (peri * peri)
+                bx, by, bw, bh = cv2.boundingRect(c)
+                ar = float(bw) / max(bh, 1)
+
+                # Reject horizontal eyelid streaks
+                if ar > 2.2 or ar < 0.45 or circ < 0.35:
+                    continue
+
+                m = cv2.moments(c)
+                if m["m00"] > 0:
+                    mcx = m["m10"] / m["m00"]
+                    mcy = m["m01"] / m["m00"]
+                    dist = np.hypot(mcx - gx, mcy - gy)
+                    # Reward proximity to corneal glint and circularity
+                    score = circ * 3.0 - dist * 0.05
+                    if score > best_score:
+                        best_score = score
+                        best_c = c
+
+            if best_c is not None and len(best_c) >= 5:
+                unet_fitted_ellipse = cv2.fitEllipse(best_c)
+                (ecx, ecy), (emaj, emin), eang = unet_fitted_ellipse
+                unet_cx, unet_cy = int(round(ecx)), int(round(ecy))
+                unet_r = int(round(np.sqrt(emaj * emin) / 2.0))
+        except Exception:
+            unet_fitted_ellipse = None
+
+    if unet_cx is not None and unet_r is not None and unet_r >= 10:
+        return unet_cx, unet_cy, unet_r, (gx, gy), unet_fitted_ellipse
+
+    # Step 2: Radial ray-casting engine (anatomical fallback & validation)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
     opened = cv2.morphologyEx(zoomed_gray, cv2.MORPH_OPEN, kernel)
     center_val = float(opened[min(zh - 1, max(0, gy)), min(zw - 1, max(0, gx))])
@@ -206,7 +268,6 @@ def detect_pupil_in_zoomed_roi(
     min_r = max(8, int(zw * 0.08))
     max_r = max(15, int(zw * 0.28))
 
-    # Ray-casting outward from glint in 36 directions
     radii = []
     points = []
     for ang in np.linspace(0, 2 * np.pi, 36, endpoint=False):
@@ -468,18 +529,31 @@ def main():
     print("=" * 65)
 
     model = None
-    if UNet is not None and os.path.exists(args.checkpoint):
-        try:
-            model = UNet(in_channels=1, num_classes=1)
-            ckpt = torch.load(args.checkpoint, map_location=device)
-            sd = ckpt.get("state_dict", ckpt)
-            unet_sd = {k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")}
-            model.load_state_dict(unet_sd or sd, strict=False)
-            model = model.to(device)
-            model.eval()
-            print("Loaded pre-trained U-Net weights.")
-        except Exception:
-            model = None
+    ckpt_candidates = []
+    if args.checkpoint:
+        ckpt_candidates.append(args.checkpoint)
+    ckpt_candidates.extend([
+        os.path.join(os.path.dirname(__file__), "..", "checkpoints", "pupil-unet-zoomed-best.ckpt"),
+        os.path.join(os.path.dirname(__file__), "checkpoints", "pupil-unet-zoomed-best.ckpt"),
+        "c:/Users/ASUS/Downloads/4th/capstone/EEye-Pupil-Optimization/checkpoints/pupil-unet-zoomed-best.ckpt",
+        os.path.join(os.path.dirname(__file__), "..", "checkpoints", "pupil-unet-epoch48-val_dice0.7170.ckpt"),
+    ])
+
+    if UNet is not None:
+        for cp in ckpt_candidates:
+            if os.path.exists(cp):
+                try:
+                    model = UNet(in_channels=1, num_classes=1)
+                    ckpt = torch.load(cp, map_location=device)
+                    sd = ckpt.get("state_dict", ckpt)
+                    unet_sd = {k[len("model."):]: v for k, v in sd.items() if k.startswith("model.")}
+                    model.load_state_dict(unet_sd or sd, strict=False)
+                    model = model.to(device)
+                    model.eval()
+                    print(f"Loaded trained U-Net checkpoint: {os.path.basename(cp)}")
+                    break
+                except Exception:
+                    model = None
 
     trans = transforms.Compose([
         transforms.ToTensor(),
